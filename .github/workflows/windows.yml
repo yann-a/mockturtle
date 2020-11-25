@@ -30,4 +30,4 @@ jobs:
     - name: Run tests
       run: |
         cd build
-        .\test\Debug\run_tests "~[quality]"
+        .\test\Debug\run_tests "[abstract_mig]"

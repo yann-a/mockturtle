@@ -26,7 +26,7 @@ jobs:
     - name: Run tests
       run: |
         cd build
-        ./test/run_tests "~[quality]"
+        ./test/run_tests "[abstract_mig]"
   build-gcc8:
     runs-on: ubuntu-latest
     name: GNU GCC 8
@@ -44,7 +44,7 @@ jobs:
     - name: Run tests
       run: |
         cd build
-        ./test/run_tests "~[quality]"
+        ./test/run_tests "[abstract_mig]"
   build-gcc9:
     runs-on: ubuntu-latest
     name: GNU GCC 9
@@ -62,7 +62,7 @@ jobs:
     - name: Run tests
       run: |
         cd build
-        ./test/run_tests "~[quality]"
+        ./test/run_tests "[abstract_mig]"
   build-clang8:
     runs-on: ubuntu-latest
     name: Clang 8
@@ -80,7 +80,7 @@ jobs:
     - name: Run tests
       run: |
         cd build
-        ./test/run_tests "~[quality]"
+        ./test/run_tests "[abstract_mig]"
   build-clang9:
     runs-on: ubuntu-latest
     name: Clang 9
@@ -98,4 +98,4 @@ jobs:
     - name: Run tests
       run: |
         cd build
-        ./test/run_tests "~[quality]"
+        ./test/run_tests "[abstract_mig]"
