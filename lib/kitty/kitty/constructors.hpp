@@ -1,5 +1,5 @@
 /* kitty: C++ truth table library
- * Copyright (C) 2017-2020  EPFL
+ * Copyright (C) 2017-2021  EPFL
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -77,6 +77,14 @@ template<>
 inline dynamic_truth_table create<dynamic_truth_table>( unsigned num_vars )
 {
   return dynamic_truth_table( num_vars );
+}
+/*! \endcond */
+
+/*! \cond PRIVATE */
+template<>
+inline partial_truth_table create<partial_truth_table>( unsigned num_vars )
+{
+  return partial_truth_table( 1 << num_vars );
 }
 /*! \endcond */
 
@@ -972,20 +980,19 @@ inline void create_characteristic( TT& tt, const TTFrom& from )
 
 /*! \brief Creates truth table from textual expression
 
-  An expression `E` is a constant `0` or `1`, or a variable `a`, `b`, ..., `p`,
-  the negation of an expression `!E`, the conjunction of multiple expressions
-  `(E...E)`, the disjunction of multiple expressions `{E...E}`, the exclusive
-  OR of multiple expressions `[E...E]`, or the majority of three expressions
-  `<EEE>`.  Examples are `[(ab)(!ac)]` to describe if-then-else, or `!{!a!b}`
-  to describe the application of De Morgan's law to `(ab)`.  The size of the
-  truth table must fit the largest variable in the expression, e.g., if `c` is
-  the largest variable, then the truth table have at least three variables.
+  An expression `E` is a constant `0` or `1`, or a truth table `a`,
+  `b`, ..., `p` from the vector `input_tts`, the negation of an
+  expression `!E`, the conjunction of multiple expressions `(E...E)`,
+  the disjunction of multiple expressions `{E...E}`, the exclusive OR
+  of multiple expressions `[E...E]`, or the majority of three
+  expressions `<EEE>`.
 
   \param tt Truth table
   \param from Expression as string
+  \param input_tts Input truth tables assigned to a, b, ...
 */
 template<typename TT, typename = std::enable_if_t<is_complete_truth_table<TT>::value>>
-bool create_from_expression( TT& tt, const std::string& expression )
+bool create_from_expression( TT& tt, const std::string& expression, std::vector<TT> const& input_tts )
 {
   enum stack_symbols
   {
@@ -1016,8 +1023,8 @@ bool create_from_expression( TT& tt, const std::string& expression )
     default:
       if ( c >= 'a' && c <= 'p' )
       {
-        auto var = tt.construct();
-        create_nth_var( var, c - 'a' );
+        assert( input_tts.size() > uint64_t( c - 'a' ) );
+        auto var = input_tts[c - 'a'];
         push_tt( var );
       }
       else
@@ -1141,6 +1148,392 @@ bool create_from_expression( TT& tt, const std::string& expression )
   }
 
   tt = truth_tables.top();
+  return true;
+}
+
+/*! \brief Creates truth table from textual expression
+
+  An expression `E` is a constant `0` or `1`, or a variable `a`, `b`, ..., `p`,
+  the negation of an expression `!E`, the conjunction of multiple expressions
+  `(E...E)`, the disjunction of multiple expressions `{E...E}`, the exclusive
+  OR of multiple expressions `[E...E]`, or the majority of three expressions
+  `<EEE>`.  Examples are `[(ab)(!ac)]` to describe if-then-else, or `!{!a!b}`
+  to describe the application of De Morgan's law to `(ab)`.  The size of the
+  truth table must fit the largest variable in the expression, e.g., if `c` is
+  the largest variable, then the truth table have at least three variables.
+
+  \param tt Truth table
+  \param from Expression as string
+*/
+template<typename TT, typename = std::enable_if_t<is_complete_truth_table<TT>::value>>
+bool create_from_expression( TT& tt, const std::string& expression )
+{
+  std::vector<TT> inputs_tts( tt.num_vars() );
+  for ( uint8_t i = 0u; i < tt.num_vars(); ++i )
+  {
+    auto var = tt.construct();
+    create_nth_var( var, i );
+    inputs_tts[i] = var;
+  }
+  return create_from_expression( tt, expression, inputs_tts );
+}
+
+namespace detail
+{
+template<typename TT, typename = std::enable_if_t<is_complete_truth_table<TT>::value>>
+bool formula_execute_operation( std::stack<TT>& truth_tables, unsigned const op )
+{
+  auto fn1 = truth_tables.top();
+  truth_tables.pop();
+  auto fn2 = truth_tables.top();
+  truth_tables.pop();
+
+  if ( op == 3 ) /* AND */
+  {
+    truth_tables.push( fn1 & fn2 );
+  }
+  else if ( op == 2 ) /* XOR */
+  {
+    truth_tables.push( fn1 ^ fn2 );
+  }
+  else if ( op == 1 ) /* OR */
+  {
+    truth_tables.push( fn1 | fn2 );
+  }
+  else
+  {
+    return false;
+  }
+  return true;
+}
+} /* namespace detail */
+
+/*! \brief Creates a truth table from a Boolean formula
+
+  Translates a Boolean expression to a truth table with
+  the variable names and ordering defined by `var_names`.
+  The supported Boolean operations are the negation `!a`
+  or `a&apos;`, the conjunction `a*b` or `a&b` or `a b`,
+  the disjunction `a+b`, or `a|b`, and the exclusive OR
+  `a^b`. Brackets `()` can be used for the operation
+  order.
+
+  \param tt Truth table
+  \param from Expression as string
+  \param input_tts Variable names
+*/
+template<typename TT, typename = std::enable_if_t<is_complete_truth_table<TT>::value>>
+bool create_from_formula( TT& tt, const std::string& expression, const std::vector<std::string>& var_names )
+{
+  enum stack_symbols
+  {
+    MARK = 0,
+    OR = 1,
+    XOR = 2,
+    AND = 3,
+    NEG = 4
+  };
+
+  enum stack_op
+  {
+    START,
+    VAR,
+    OPER,
+    F_ERROR
+  };
+
+  /* create input truth tables */
+  std::vector<TT> inputs_tts( tt.num_vars() );
+  for ( uint8_t i = 0u; i < tt.num_vars(); ++i )
+  {
+    auto var = tt.construct();
+    create_nth_var( var, i );
+    inputs_tts[i] = var;
+  }
+
+  std::stack<stack_symbols> symbols;
+  std::stack<TT> truth_tables;
+
+  /* check brackets */
+  unsigned nbrackets = 0;
+  for ( char const& c : expression )
+  {
+    if ( c == '(' )
+    {
+      ++nbrackets;
+    }
+    else if ( c == ')' )
+    {
+      --nbrackets;
+    }
+  }
+
+  if ( nbrackets != 0 )
+  {
+    std::cerr << "[e] different number of opening and closing brackets.\n";
+    return false;
+  }
+
+  stack_op flag = START;
+  auto temp_tt = tt.construct();
+  for ( auto i = 0u; i < expression.length(); ++i )
+  {
+    char const c = expression.at( i );
+    switch( c )
+    {
+    case ' ':
+    case '\t':
+    case '\r':
+    case '\n':
+      continue;
+
+    case '0':
+      if ( flag == VAR )
+      {
+        std::cerr << "[e] symbol before constant.\n";
+        flag = F_ERROR;
+        break;
+      }
+      truth_tables.push( tt.construct() );
+      flag = VAR;
+      break;
+
+    case '1':
+      if ( flag == VAR )
+      {
+        std::cerr << "[e] symbol before constant.\n";
+        flag = F_ERROR;
+        break;
+      }
+      truth_tables.push( ~tt.construct() );
+      flag = VAR;
+      break;
+
+    case '!':
+      if ( flag == VAR )
+      {
+        /* assuming an AND op */
+        symbols.push( AND );
+        flag = OPER;
+      }
+      symbols.push( NEG );
+      break;
+
+    case '\'':
+      if ( flag != VAR )
+      {
+        std::cerr << "[e] no variable specified before negation.\n";
+        flag = F_ERROR;
+        break;
+      }
+      temp_tt = truth_tables.top();
+      truth_tables.pop();
+      truth_tables.push( ~temp_tt );
+      break;
+
+    case '*':
+    case '&':
+      if ( flag != VAR )
+      {
+        std::cerr << "[e] no variable specified before binary operation.\n";
+        flag = F_ERROR;
+        break;
+      }
+      symbols.push( AND );
+      flag = OPER;
+      break;
+
+    case '+':
+    case '|':
+      if ( flag != VAR )
+      {
+        std::cerr << "[e] no variable specified before binary operation.\n";
+        flag = F_ERROR;
+        break;
+      }
+      symbols.push( OR );
+      flag = OPER;
+      break;
+
+    case '^':
+      if ( flag != VAR )
+      {
+        std::cerr << "[e] no variable specified before binary operation.\n";
+        flag = F_ERROR;
+        break;
+      }
+      symbols.push( XOR );
+      flag = OPER;
+      break;
+
+    case '(':
+      if ( flag == VAR )
+      {
+        /* assuming an AND op */
+        symbols.push( AND );
+      }
+      symbols.push( MARK );
+      flag = START;
+      break;
+    
+    case ')':
+      if ( symbols.size() != 0 )
+      {
+        while( 1 )
+        {
+          stack_symbols oper = symbols.top();
+          symbols.pop();
+          if ( oper == MARK )
+            break;
+
+          if ( !detail::formula_execute_operation( truth_tables, oper ) )
+          {
+            std::cerr << "[e] unknown operation.\n";
+            flag = F_ERROR;
+            break;
+          }
+        }
+      }
+      if ( flag != F_ERROR )
+      {
+        flag = VAR;
+      }
+      break;
+
+    default:
+      /* read variable name */
+      auto j = 1u;
+      while ( i + j < expression.length() &&
+              expression[i + j] != ' ' && expression[i + j] != '\t' && expression[i + j] != '\r' &&
+              expression[i + j] != '\n' && expression[i + j] != '*' && expression[i + j] != '&' &&
+              expression[i + j] != '+' && expression[i + j] != '|' && expression[i + j] != '^' &&
+              expression[i + j] != '\'' && expression[i + j] != ')' )
+      {
+        if ( expression[i + j] == '!' || expression[i + j] == '(' )
+        {
+          std::cerr << "[e] negation sign or open bracket inside variable name.\n";
+          flag = F_ERROR;
+          break;
+        }
+        ++j;
+      }
+
+      uint32_t var_index = 0;
+      bool match = false;
+      for ( auto const& v : var_names )
+      {
+        if ( expression.compare( i, j, v ) == 0 )
+        {
+          match = true;
+          break;
+        }
+        ++var_index;
+      }
+
+      if ( !match )
+      {
+        std::cerr << "[e] cannot find variable " << expression.substr( i, j ) << " in variables list.\n";
+        flag = F_ERROR;
+        break;
+      }
+
+      if ( flag == VAR )
+      {
+        symbols.push( AND );
+      }
+
+      /* increase pointer index */
+      i += j - 1;
+
+      truth_tables.push( inputs_tts[var_index] );
+
+      flag = VAR;
+      break;
+    }
+
+    if ( flag == F_ERROR )
+    {
+      break;
+    }
+    else if ( flag == START )
+    {
+      continue;
+    }
+    else if ( flag == VAR )
+    {
+      /* check if there are negations */
+      while ( 1 )
+      {
+        if ( symbols.size() == 0 )
+        {
+          break;
+        }
+        auto oper = symbols.top();
+        if ( oper == NEG )
+        {
+          temp_tt = truth_tables.top();
+          truth_tables.pop();
+          truth_tables.push( ~temp_tt );
+          symbols.pop();
+        }
+        else
+        {
+          break;
+        }
+      }
+    }
+    else if ( flag == OPER )
+    {
+      while ( 1 )
+      {
+        /* execute the ops with the a higher priority than the last op */
+        if ( symbols.size() == 1 )
+        {
+          break;
+        }
+        auto op1 = symbols.top();
+        symbols.pop();
+        auto op2 = symbols.top();
+        if ( op2 >= op1 )
+        {
+          symbols.pop();
+          /* execute previous op */
+          if ( !detail::formula_execute_operation( truth_tables, op2 ) )
+          {
+            std::cerr << "[e] unknown operation.\n";
+            flag = F_ERROR;
+            break;
+          }
+          symbols.push( op1 );
+        }
+        else
+        {
+          /* push operations back */
+          symbols.push( op1 );
+          break;
+        }
+      }
+    }
+  }
+
+  if ( flag != F_ERROR )
+  {
+    /* last operation if present */
+    while ( symbols.size() > 0 )
+    {
+      if ( !detail::formula_execute_operation( truth_tables, symbols.top() ) )
+      {
+        std::cerr << "[e] unknown operation.\n";
+        flag = F_ERROR;
+        break;
+      }
+      symbols.pop();
+    }
+
+    /* assign truth table */
+    tt = truth_tables.top();
+  }
+
   return true;
 }
 

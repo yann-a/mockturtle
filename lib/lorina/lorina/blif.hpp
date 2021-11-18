@@ -1,5 +1,5 @@
 /* lorina: C++ parsing library
- * Copyright (C) 2018  EPFL
+ * Copyright (C) 2018-2021  EPFL
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -28,13 +28,14 @@
   \brief Implements BLIF parser
 
   \author Heinz Riener
+  \author Siang-Yun (Sonia) Lee
 */
 
 #pragma once
 
-#include <lorina/common.hpp>
-#include <lorina/diagnostics.hpp>
-#include <lorina/detail/utils.hpp>
+#include "common.hpp"
+#include "diagnostics.hpp"
+#include "detail/utils.hpp"
 #include <regex>
 #include <iostream>
 #include <optional>
@@ -271,13 +272,38 @@ static std::regex end( R"(.end)" );
  * \param in Input stream
  * \param reader A BLIF reader with callback methods invoked for parsed primitives
  * \param diag An optional diagnostic engine with callback methods for parse errors
- * \return Success if parsing have been successful, or parse error if parsing have failed
+ * \return Success if parsing has been successful, or parse error if parsing has failed
  */
-inline return_code read_blif( std::istream& in, const blif_reader& reader, diagnostic_engine* diag = nullptr )
+[[nodiscard]] inline return_code read_blif( std::istream& in, const blif_reader& reader, diagnostic_engine* diag = nullptr )
 {
   return_code result = return_code::success;
 
-  const auto dispatch_function = [&]( std::vector<std::string> inputs, std::string output, std::vector<std::pair<std::string, std::string>> tt )
+  /* Function signature */
+  using GateFn = detail::Func<
+                   std::vector<std::string>,
+                   std::string,
+                   std::vector<std::pair<std::string, std::string>>
+                 >;
+
+  /* Parameter maps */
+  using GateParamMap = detail::ParamPackMap<
+                         /* Key */
+                         std::string,
+                         /* Params */
+                         std::vector<std::string>,
+                         std::string,
+                         std::vector<std::pair<std::string, std::string>>
+                       >;
+
+  constexpr static const int GATE_FN{0};
+
+  using ParamMaps = detail::ParamPackMapN<GateParamMap>;
+  using PackedFns = detail::FuncPackN<GateFn>;
+
+  detail::call_in_topological_order<PackedFns, ParamMaps>
+    on_action( PackedFns( GateFn( [&]( std::vector<std::string> inputs,
+				       std::string output,
+				       std::vector<std::pair<std::string, std::string>> tt )
     {
       /* ignore latches */
       if ( output == "" )
@@ -287,9 +313,7 @@ inline return_code read_blif( std::istream& in, const blif_reader& reader, diagn
       }
 
       reader.on_gate( inputs, output, tt );
-    };
-
-  detail::call_in_topological_order<std::vector<std::string>, std::string, std::vector<std::pair<std::string, std::string>>> on_action( dispatch_function );
+    } ) ) );
 
   std::smatch m;
   detail::foreach_line_in_file_escape( in, [&]( std::string line ) {
@@ -327,7 +351,7 @@ inline return_code read_blif( std::istream& in, const blif_reader& reader, diagn
           return false;
         } );
 
-        on_action.call_deferred( args, output, args, output, tt );
+        on_action.call_deferred<GATE_FN>( args, { output }, std::tuple( args, output, tt ) );
 
         if ( in.eof() )
         {
@@ -393,13 +417,12 @@ inline return_code read_blif( std::istream& in, const blif_reader& reader, diagn
 
           on_action.declare_known( output );
           reader.on_latch( input, output, type, control, init_value );
-          on_action.compute_dependencies( output );
+          on_action.compute_dependencies<GATE_FN>( { output } );
 
           return true;
         }
 
-        diag->report( diagnostic_level::error,
-                      fmt::format( "latch format not supported `{0}`", line ) );
+        diag->report( diag_id::ERR_BLIF_LATCH_FORMAT ).add_argument( line );
 
         result = return_code::parse_error;
       }
@@ -424,8 +447,7 @@ inline return_code read_blif( std::istream& in, const blif_reader& reader, diagn
 
       if ( diag )
       {
-        diag->report( diagnostic_level::error,
-                      fmt::format( "cannot parse line `{0}`", line ) );
+        diag->report( diag_id::ERR_PARSE_LINE ).add_argument( line );
       }
 
       result = return_code::parse_error;
@@ -441,8 +463,9 @@ inline return_code read_blif( std::istream& in, const blif_reader& reader, diagn
   {
     if ( diag )
     {
-      diag->report( diagnostic_level::warning,
-                    fmt::format( "unresolved dependencies: `{0}` requires `{1}`",  r.first, r.second ) );
+      diag->report( diag_id::WRN_UNRESOLVED_DEPENDENCY )
+        .add_argument( r.first )
+        .add_argument( r.second );
     }
   }
 
@@ -457,12 +480,25 @@ inline return_code read_blif( std::istream& in, const blif_reader& reader, diagn
  * \param filename Name of the file
  * \param reader A BLIF reader with callback methods invoked for parsed primitives
  * \param diag An optional diagnostic engine with callback methods for parse errors
- * \return Success if parsing have been successful, or parse error if parsing have failed
+ * \return Success if parsing has been successful, or parse error if parsing has failed
  */
-inline return_code read_blif( const std::string& filename, const blif_reader& reader, diagnostic_engine* diag = nullptr )
+[[nodiscard]] inline return_code read_blif( const std::string& filename, const blif_reader& reader, diagnostic_engine* diag = nullptr )
 {
   std::ifstream in( detail::word_exp_filename( filename ), std::ifstream::in );
-  return read_blif( in, reader, diag );
+  if ( !in.is_open() )
+  {
+    if ( diag )
+    {
+      diag->report( diag_id::ERR_FILE_OPEN ).add_argument( filename );
+    }
+    return return_code::parse_error;
+  }
+  else
+  {
+    auto const ret = read_blif( in, reader, diag );
+    in.close();
+    return ret;
+  }
 }
 
 } // namespace lorina

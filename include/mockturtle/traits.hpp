@@ -1,5 +1,5 @@
 /* mockturtle: C++ logic network library
- * Copyright (C) 2018-2019  EPFL
+ * Copyright (C) 2018-2021  EPFL
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -27,13 +27,17 @@
   \file traits.hpp
   \brief Type traits and checkers for the network interface
 
+  \author Heinz Riener
   \author Mathias Soeken
+  \author Max Austin
+  \author Siang-Yun (Sonia) Lee
 */
 
 #pragma once
 
 #include <string>
 #include <type_traits>
+#include <list>
 #include <map>
 
 #include <kitty/dynamic_truth_table.hpp>
@@ -67,6 +71,14 @@ struct is_network_type<Ntk, std::enable_if_t<
 
 template<class Ntk>
 inline constexpr bool is_network_type_v = is_network_type<Ntk>::value;
+
+template<class Ntk>
+struct is_buffered_network_type : std::false_type
+{
+};
+
+template<class Ntk>
+inline constexpr bool is_buffered_network_type_v = is_buffered_network_type<Ntk>::value;
 
 #pragma region is_topologically_sorted
 template<class Ntk, class = void>
@@ -563,6 +575,21 @@ template<class Ntk>
 inline constexpr bool has_substitute_node_v = has_substitute_node<Ntk>::value;
 #pragma endregion
 
+#pragma region has_substitute_nodes
+template<class Ntk, class = void>
+struct has_substitute_nodes : std::false_type
+{
+};
+
+template<class Ntk>
+struct has_substitute_nodes<Ntk, std::void_t<decltype( std::declval<Ntk>().substitute_nodes( std::declval<std::list<std::pair<node<Ntk>, signal<Ntk>>>>() ) )>> : std::true_type
+{
+};
+
+template<class Ntk>
+inline constexpr bool has_substitute_nodes_v = has_substitute_nodes<Ntk>::value;
+#pragma endregion
+
 #pragma region has_replace_in_node
 template<class Ntk, class = void>
 struct has_replace_in_node : std::false_type
@@ -600,7 +627,7 @@ struct has_take_out_node : std::false_type
 };
 
 template<class Ntk>
-struct has_take_out_node<Ntk, std::void_t<decltype( std::declval<Ntk>().take_out_node( std::declval<signal<Ntk>>() ) )>> : std::true_type
+struct has_take_out_node<Ntk, std::void_t<decltype( std::declval<Ntk>().take_out_node( std::declval<node<Ntk>>() ) )>> : std::true_type
 {
 };
 
@@ -921,6 +948,21 @@ struct has_is_on_critical_path<Ntk, std::void_t<decltype( std::declval<Ntk>().is
 
 template<class Ntk>
 inline constexpr bool has_is_on_critical_path_v = has_is_on_critical_path<Ntk>::value;
+#pragma endregion
+
+#pragma region has_is_buf
+template<class Ntk, class = void>
+struct has_is_buf : std::false_type
+{
+};
+
+template<class Ntk>
+struct has_is_buf<Ntk, std::void_t<decltype( std::declval<Ntk>().is_buf( std::declval<node<Ntk>>() ) )>> : std::true_type
+{
+};
+
+template<class Ntk>
+inline constexpr bool has_is_buf_v = has_is_buf<Ntk>::value;
 #pragma endregion
 
 #pragma region has_is_and
@@ -1853,6 +1895,36 @@ template<class Ntk>
 inline constexpr bool has_incr_trav_id_v = has_incr_trav_id<Ntk>::value;
 #pragma endregion
 
+#pragma region has_get_network_name
+template<class Ntk, class = void>
+struct has_get_network_name : std::false_type
+{
+};
+
+template<class Ntk>
+struct has_get_network_name<Ntk, std::void_t<decltype( std::declval<Ntk>().get_network_name() )>> : std::true_type
+{
+};
+
+template<class Ntk>
+inline constexpr bool has_get_network_name_v = has_get_network_name<Ntk>::value;
+#pragma endregion
+
+#pragma region has_set_network_name
+template<class Ntk, class = void>
+struct has_set_network_name : std::false_type
+{
+};
+
+template<class Ntk>
+struct has_set_network_name<Ntk, std::void_t<decltype( std::declval<Ntk>().set_network_name( std::string() ) )>> : std::true_type
+{
+};
+
+template<class Ntk>
+inline constexpr bool has_set_network_name_v = has_set_network_name<Ntk>::value;
+#pragma endregion
+
 #pragma region has_get_name
 template<class Ntk, class = void>
 struct has_get_name : std::false_type
@@ -2051,12 +2123,12 @@ inline constexpr bool has_eval_fanins_color_v = has_eval_fanins_color<Ntk>::valu
 /*! \brief SFINAE based on iterator type (for compute functions).
  */
 template<typename Iterator, typename T>
-using iterates_over_t = std::enable_if_t<std::is_same_v<typename Iterator::value_type, T>, T>;
+using iterates_over_t = std::enable_if_t<std::is_same_v<typename std::iterator_traits<Iterator>::value_type, T>, T>;
 
 /*! \brief SFINAE based on iterator type for truth tables (for compute functions).
  */
 template<typename Iterator>
-using iterates_over_truth_table_t = std::enable_if_t<kitty::is_truth_table<typename Iterator::value_type>::value, typename Iterator::value_type>;
+using iterates_over_truth_table_t = std::enable_if_t<kitty::is_truth_table<typename std::iterator_traits<Iterator>::value_type>::value, typename std::iterator_traits<Iterator>::value_type>;
 
 template<class Iterator, typename T>
 inline constexpr bool iterates_over_v = std::is_same_v<typename Iterator::value_type, T>;

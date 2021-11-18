@@ -1,5 +1,5 @@
 /* mockturtle: C++ logic network library
- * Copyright (C) 2018-2019  EPFL
+ * Copyright (C) 2018-2021  EPFL
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -27,7 +27,12 @@
   \file xmg.hpp
   \brief XMG logic network implementation
 
+  \author Heinz Riener
+  \author Jinzheng Tu
   \author Mathias Soeken
+  \author Max Austin
+  \author Siang-Yun (Sonia) Lee
+  \author Walter Lau Neto
 */
 
 #pragma once
@@ -149,6 +154,13 @@ public:
     {
       return {index, complement};
     }
+
+#if __cplusplus > 201703L
+    bool operator==( xmg_storage::node_type::pointer_type const& other ) const
+    {
+      return data == other.data;
+    }
+#endif
   };
 
   xmg_network()
@@ -296,10 +308,6 @@ public:
     {
       return ( b.complement == c.complement ) ? b : a;
     }
-    else if ( a.index == b.index == c.index )
-    {
-      return ( a.complement == b.complement ) ? a : c;
-    }
 
     /*  complemented edges minimization */
     auto node_complement = false;
@@ -344,7 +352,7 @@ public:
 
     for ( auto const& fn : _events->on_add )
     {
-      fn( index );
+      (*fn)( index );
     }
 
     return {index, node_complement};
@@ -376,10 +384,6 @@ public:
       return c ^ fcompl;
     }
     else if ( b.index == c.index )
-    {
-      return a ^ fcompl;
-    }
-    else if ( ( a.index == b.index ) && ( b.index == c.index ) )
     {
       return a ^ fcompl;
     }
@@ -415,7 +419,7 @@ public:
 
     for ( auto const& fn : _events->on_add )
     {
-      fn( index );
+      (*fn)( index );
     }
 
     return {index, fcompl};
@@ -623,10 +627,6 @@ public:
       {
         return std::make_pair( n, child0 ^ node_complement );
       }
-      else if ( ( child0.index == child1.index ) && ( child1.index == child2.index ) )
-      {
-        return std::make_pair( n, child0 ^ node_complement );
-      }
     }
 
     // node already in hash table
@@ -658,7 +658,7 @@ public:
 
     for ( auto const& fn : _events->on_modified )
     {
-      fn( n, {old_child0, old_child1, old_child2} );
+      (*fn)( n, {old_child0, old_child1, old_child2} );
     }
 
     return std::nullopt;
@@ -691,7 +691,7 @@ public:
 
     for ( auto const& fn : _events->on_delete )
     {
-      fn( n );
+      (*fn)( n );
     }
 
     for ( auto i = 0u; i < 3u; ++i )

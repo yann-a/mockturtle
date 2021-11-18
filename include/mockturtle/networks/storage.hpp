@@ -1,5 +1,5 @@
 /* mockturtle: C++ logic network library
- * Copyright (C) 2018-2019  EPFL
+ * Copyright (C) 2018-2021  EPFL
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -27,8 +27,10 @@
   \file storage.hpp
   \brief Configurable storage container
 
-  \author Mathias Soeken
+  \author Bruno Schmitt
   \author Heinz Riener
+  \author Mathias Soeken
+  \author Max Austin
 */
 
 #pragma once
@@ -38,7 +40,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "../utils/include/spp.hpp"
+#include <parallel_hashmap/phmap.h>
 
 namespace mockturtle
 {
@@ -72,8 +74,8 @@ template<>
 struct node_pointer<0>
 {
 public:
-  node_pointer<0>() = default;
-  node_pointer<0>( uint64_t index ) : index( index ) {}
+  node_pointer() = default;
+  node_pointer( uint64_t index ) : index( index ) {}
 
   union {
     uint64_t index;
@@ -194,7 +196,6 @@ struct storage
   {
     nodes.reserve( 10000u );
     hash.reserve( 10000u );
-    hash.set_resizing_parameters( .4f, .95f );
 
     /* we generally reserve the first node for a constant */
     nodes.emplace_back();
@@ -207,7 +208,7 @@ struct storage
   std::vector<typename node_type::pointer_type> outputs;
   std::unordered_map<uint64_t, latch_info> latch_information;
 
-  spp::sparse_hash_map<node_type, uint64_t, NodeHasher> hash;
+  phmap::flat_hash_map<node_type, uint64_t, NodeHasher> hash;
 
   T data;
 };

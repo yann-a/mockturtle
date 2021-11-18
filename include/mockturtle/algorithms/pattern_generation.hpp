@@ -1,5 +1,5 @@
 /* mockturtle: C++ logic network library
- * Copyright (C) 2018-2020  EPFL
+ * Copyright (C) 2018-2021  EPFL
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -27,7 +27,8 @@
   \file pattern_generation.hpp
   \brief Expressive Simulation Pattern Generation
 
-  \author Siang-Yun Lee
+  \author Heinz Riener
+  \author Siang-Yun (Sonia) Lee
 */
 
 #pragma once
@@ -48,9 +49,6 @@ namespace mockturtle
 
 struct pattern_generation_params
 {
-  /*! \brief Whether to remove constant nodes. Requires `substitute_node`. */
-  bool substitute_const{false};
-
   /*! \brief Number of patterns each node should have for both values. 
    * 
    * When this parameter is set to greater than 1, and if the network has more
@@ -111,13 +109,13 @@ struct pattern_generation_stats
 namespace detail
 {
 
-template<class Ntk, class Simulator, bool use_odc = false>
+template<class Ntk, class Simulator, bool use_odc = false, bool substitute_const = false>
 class patgen_impl
 {
 public:
   using node = typename Ntk::node;
   using signal = typename Ntk::signal;
-  using TT = unordered_node_map<kitty::partial_truth_table, Ntk>;
+  using TT = incomplete_node_map<kitty::partial_truth_table, Ntk>;
 
   explicit patgen_impl( Ntk& ntk, Simulator& sim, pattern_generation_params const& ps, validator_params& vps, pattern_generation_stats& st )
       : ntk( ntk ), ps( ps ), st( st ), vps( vps ), validator( ntk, vps ),
@@ -136,7 +134,7 @@ public:
     if ( ps.num_stuck_at > 0 )
     {
       stuck_at_check();
-      if constexpr( std::is_same_v<Simulator, bit_packed_simulator> )
+      if constexpr ( std::is_same_v<Simulator, bit_packed_simulator> )
       {
         sim.pack_bits();
         call_with_stopwatch( st.time_sim, [&]() {
@@ -144,7 +142,7 @@ public:
           simulate_nodes<Ntk>( ntk, tts, sim, true );
         } );
       }
-      if ( ps.substitute_const )
+      if constexpr ( substitute_const )
       {
         for ( auto n : const_nodes )
         {
@@ -198,7 +196,7 @@ private:
         bool value = ( tts[n] == zero ); /* wanted value of n */
 
         const auto res = call_with_stopwatch( st.time_sat, [&]() {
-          vps.odc_levels = 0;
+          validator.set_odc_levels( 0 );
           return validator.validate( n, !value );
         } );
         if ( !res )
@@ -221,7 +219,7 @@ private:
               }
 
               const auto res2 = call_with_stopwatch( st.time_sat, [&]() {
-                vps.odc_levels = ps.odc_levels;
+                validator.set_odc_levels( ps.odc_levels );
                 return validator.validate( n, !value );
               } );
               if ( res2 )
@@ -252,7 +250,7 @@ private:
           if ( ps.num_stuck_at > 1 )
           {
             auto generated = call_with_stopwatch( st.time_sat, [&]() {
-              vps.odc_levels = ps.odc_levels;
+              validator.set_odc_levels( ps.odc_levels );
               return validator.generate_pattern( n, value, {validator.cex}, ps.num_stuck_at - 1 );
             } );
             for ( auto& pattern : generated )
@@ -325,7 +323,7 @@ private:
         }
 
         const auto res = call_with_stopwatch( st.time_sat, [&]() {
-          vps.odc_levels = ps.odc_levels;
+          validator.set_odc_levels( ps.odc_levels );
           return validator.validate( n, false );
         } );
         if ( res )
@@ -362,7 +360,7 @@ private:
         }
 
         const auto res = call_with_stopwatch( st.time_sat, [&]() {
-          vps.odc_levels = ps.odc_levels;
+          validator.set_odc_levels( ps.odc_levels );
           return validator.validate( n, true );
         } );
         if ( res )
@@ -436,7 +434,7 @@ private:
     }
 
     auto generated = call_with_stopwatch( st.time_sat, [&]() {
-      vps.odc_levels = ps.odc_levels;
+      validator.set_odc_levels( ps.odc_levels );
       return validator.generate_pattern( n, value, patterns, ps.num_stuck_at - patterns.size() );
     } );
     for ( auto& pattern : generated )
@@ -547,7 +545,7 @@ private:
  * patterns can then be written out with `write_patterns`
  * or directly be used by passing the simulator to another algorithm.
  */
-template<class Ntk, class Simulator>
+template<bool substitute_const = false, class Ntk, class Simulator>
 void pattern_generation( Ntk& ntk, Simulator& sim, pattern_generation_params const& ps = {}, pattern_generation_stats* pst = nullptr )
 {
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
@@ -568,12 +566,12 @@ void pattern_generation( Ntk& ntk, Simulator& sim, pattern_generation_params con
     using fanout_view_t = fanout_view<Ntk>;
     fanout_view_t fanout_view{ntk};
 
-    detail::patgen_impl<fanout_view_t, Simulator, true> p( fanout_view, sim, ps, vps, st );
+    detail::patgen_impl<fanout_view_t, Simulator, /*use_odc*/true, substitute_const> p( fanout_view, sim, ps, vps, st );
     p.run();
   }
   else
   {
-    detail::patgen_impl p( ntk, sim, ps, vps, st );
+    detail::patgen_impl<Ntk, Simulator, /*use_odc*/false, substitute_const> p( ntk, sim, ps, vps, st );
     p.run();
   }
 

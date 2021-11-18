@@ -74,6 +74,14 @@ algorithm.  Several views are implemented in mockturtle.
 .. doxygenclass:: mockturtle::window_view
    :members:
 
+`binding_view`: Add bindings to a technology library
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Header:** ``mockturtle/views/binding_view.hpp``
+
+.. doxygenclass:: mockturtle::binding_view
+   :members:
+
 `names_view`: Assign names to signals and outputs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -98,5 +106,5 @@ algorithm.  Several views are implemented in mockturtle.
 .. doxygenclass:: mockturtle::color_view
    :members:
 
- .. doxygenclass:: mockturtle::out_of_place_color_view
+.. doxygenclass:: mockturtle::out_of_place_color_view
    :members:

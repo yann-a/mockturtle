@@ -1,5 +1,5 @@
 /* mockturtle: C++ logic network library
- * Copyright (C) 2018-2020  EPFL
+ * Copyright (C) 2018-2021  EPFL
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -27,8 +27,9 @@
   \file simulation.hpp
   \brief Simulate networks
 
+  \author Heinz Riener
   \author Mathias Soeken
-  \author Siang-Yun Lee (partial simulation)
+  \author Siang-Yun (Sonia) Lee
 */
 
 #pragma once
@@ -180,7 +181,7 @@ public:
    * \param num_pis Number of primary inputs, which is the same as the length of a simulation pattern.
    * \param num_patterns Number of initial random simulation patterns.
    */
-  partial_simulator( unsigned num_pis, unsigned num_patterns, std::default_random_engine::result_type seed = 1 )
+  partial_simulator( uint32_t num_pis, uint32_t num_patterns, std::default_random_engine::result_type seed = 1 )
     : num_patterns( num_patterns )
   {
     assert( num_pis > 0u );
@@ -192,10 +193,9 @@ public:
     }
   }
 
-  /* copy constructor */
-  partial_simulator( partial_simulator const& sim )
-    : patterns( sim.patterns ), num_patterns( sim.num_patterns )
-  { }
+  /* copy constructors */
+  partial_simulator( partial_simulator const& sim ) = default;
+  partial_simulator& operator=( partial_simulator const& sim ) = default;
 
   /*! \brief Create a `partial_simulator` with given simulation patterns.
    *
@@ -303,16 +303,15 @@ public:
 
   bit_packed_simulator() {}
 
-  bit_packed_simulator( unsigned num_pis, unsigned num_patterns, std::default_random_engine::result_type seed = 1 )
+  bit_packed_simulator( uint32_t num_pis, uint32_t num_patterns, std::default_random_engine::result_type seed = 1 )
     : partial_simulator( num_pis, num_patterns, seed ), packed_patterns( num_patterns )
   {
     fill_cares( num_pis );
   }
 
-  /* copy constructor */
-  bit_packed_simulator( bit_packed_simulator const& sim )
-    : partial_simulator( sim ), care( sim.care ), packed_patterns( sim.packed_patterns )
-  { }
+  /* copy constructors */
+  bit_packed_simulator( bit_packed_simulator const& sim ) = default;
+  bit_packed_simulator& operator=( bit_packed_simulator const& sim ) = default;
 
   /* copy constructor from `partial_simulator` */
   bit_packed_simulator( partial_simulator const& sim )
@@ -361,9 +360,9 @@ public:
     if ( num_patterns == packed_patterns ) { return false; }
     assert( num_patterns > packed_patterns );
 
-    std::vector<uint32_t> empty_slots;
+    std::vector<int64_t> empty_slots;
     /* for each unpacked pattern (at `p`), try to pack it into one of the patterns before it (at `pos` in block `block`). */
-    for ( int p = num_patterns - 1; p >= (int)packed_patterns; --p )
+    for ( int64_t p = num_patterns - 1; p >= (int64_t)packed_patterns; --p )
     {
       for ( auto block = p < 1024 ? 0 : std::rand() % ( p >> 6 ); block <= ( p >> 6 ); ++block )
       {
@@ -388,14 +387,14 @@ public:
     {
       /* fill the empty slots (from smaller values; `empty_slots` should be reversely sorted) */
       /* `empty_slots[j]` is the smallest position where larger positions are all empty */
-      int j = 0;
-      for ( int i = empty_slots.size() - 1; i >= 0; --i )
+      int64_t j = 0;
+      for ( int64_t i = empty_slots.size() - 1; i >= 0; --i )
       {
         while ( empty_slots[j] >= num_patterns - 1 && j <= i )
         {
           if ( empty_slots[j] == num_patterns - 1 ) { --num_patterns; }
           ++j;
-          if ( j == (int)empty_slots.size() ) { break; }
+          if ( j == (int64_t)empty_slots.size() ) { break; }
         }
         if ( j > i ) { break; }
         move_pattern( num_patterns - 1, empty_slots[i] );
@@ -419,14 +418,14 @@ public:
     for ( auto i = 0u; i < patterns.size(); ++i )
     {
       kitty::partial_truth_table tt( num_patterns );
-      kitty::create_random( tt, seed + patterns.size() + i );
+      kitty::create_random( tt, std::default_random_engine::result_type( seed + patterns.size() + i ) );
       patterns.at( i ) = ( patterns.at( i ) & care.at( i ) ) | ( tt & ~care.at( i ) );
     }
   }
 
 private:
   /* all bits in patterns generated before construction are care bits */
-  void fill_cares( uint32_t const num_pis )
+  void fill_cares( uint64_t const num_pis )
   {
     for ( auto i = 0u; i < num_pis; ++i )
     {
@@ -436,7 +435,7 @@ private:
   }
 
   /* move the pattern at position `from` to position `to`. */
-  void move_pattern( uint32_t const from, uint32_t const to )
+  void move_pattern( uint64_t const from, uint64_t const to )
   {
     for ( auto i = 0u; i < patterns.size(); ++i )
     {
@@ -527,40 +526,11 @@ node_map<SimulationType, Ntk> simulate_nodes( Ntk const& ntk, Simulator const& s
   return node_to_value;
 }
 
-/*! \brief Simulates a network with a generic simulator.
- *
- * This is a generic simulation algorithm that can simulate arbitrary values.
- * In order to that, the network needs to implement the `compute` method for
- * `SimulationType` and one must pass an instance of a `Simulator` that
- * implements the three methods:
- * - `SimulationType compute_constant(bool)`
- * - `SimulationType compute_pi(index)`
- * - `SimulationType compute_not(SimulationType const&)`
- *
- * The method `compute_constant` returns a simulation value for a constant
- * value.  The method `compute_pi` returns a simulation value for a primary
- * input based on its index, and `compute_not` to invert a simulation value.
- *
- * This method returns a map that maps each node to its computed simulation
- * value.
- *
- * **Required network functions:**
- * - `foreach_po`
- * - `get_constant`
- * - `constant_value`
- * - `get_node`
- * - `foreach_pi`
- * - `foreach_gate`
- * - `fanin_size`
- * - `num_pos`
- * - `compute<SimulationType>`
- *
- * \param ntk Network
- * \param node_to_value A map from nodes to values
- * \param sim Simulator, which implements the simulator interface
- */
-template<class SimulationType, class Ntk, class Simulator = default_simulator<SimulationType>>
-void simulate_nodes( Ntk const& ntk, unordered_node_map<SimulationType, Ntk>& node_to_value, Simulator const& sim = Simulator() )
+namespace detail
+{
+
+template<class SimulationType, class Ntk, class Simulator, class Container>
+void simulate_nodes_with_node_map( Ntk const& ntk, Container& node_to_value, Simulator const& sim )
 {
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
   static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
@@ -608,11 +578,59 @@ void simulate_nodes( Ntk const& ntk, unordered_node_map<SimulationType, Ntk>& no
   } );
 }
 
+} // namespace detail
+
+/*! \brief Simulates a network with a generic simulator.
+ *
+ * This is a generic simulation algorithm that can simulate arbitrary values.
+ * In order to that, the network needs to implement the `compute` method for
+ * `SimulationType` and one must pass an instance of a `Simulator` that
+ * implements the three methods:
+ * - `SimulationType compute_constant(bool)`
+ * - `SimulationType compute_pi(index)`
+ * - `SimulationType compute_not(SimulationType const&)`
+ *
+ * The method `compute_constant` returns a simulation value for a constant
+ * value.  The method `compute_pi` returns a simulation value for a primary
+ * input based on its index, and `compute_not` to invert a simulation value.
+ *
+ * This method returns a map that maps each node to its computed simulation
+ * value.
+ *
+ * **Required network functions:**
+ * - `foreach_po`
+ * - `get_constant`
+ * - `constant_value`
+ * - `get_node`
+ * - `foreach_pi`
+ * - `foreach_gate`
+ * - `fanin_size`
+ * - `num_pos`
+ * - `compute<SimulationType>`
+ *
+ * \param ntk Network
+ * \param node_to_value A map from nodes to values
+ * \param sim Simulator, which implements the simulator interface
+ */
+template<class SimulationType, class Ntk, class Simulator = default_simulator<SimulationType>>
+void simulate_nodes( Ntk const& ntk, unordered_node_map<SimulationType, Ntk>& node_to_value, Simulator const& sim = Simulator() )
+{
+  detail::simulate_nodes_with_node_map<SimulationType, Ntk, Simulator, unordered_node_map<SimulationType, Ntk>>( ntk, node_to_value, sim );
+}
+
+template<class SimulationType, class Ntk, class Simulator = default_simulator<SimulationType>>
+void simulate_nodes( Ntk const& ntk, incomplete_node_map<SimulationType, Ntk>& node_to_value, Simulator const& sim = Simulator() )
+{
+  detail::simulate_nodes_with_node_map<SimulationType, Ntk, Simulator, incomplete_node_map<SimulationType, Ntk>>( ntk, node_to_value, sim );
+}
+
 namespace detail
 {
+/* Forward declaration */
+template<class Ntk, class Simulator, class Container> void re_simulate_fanin_cone( Ntk const& ntk, typename Ntk::node const& n, Container& node_to_value, Simulator const& sim );
 
-template<class Ntk, class Simulator>
-void simulate_fanin_cone( Ntk const& ntk, typename Ntk::node const& n, unordered_node_map<kitty::partial_truth_table, Ntk>& node_to_value, Simulator const& sim )
+template<class Ntk, class Simulator, class Container>
+void simulate_fanin_cone( Ntk const& ntk, typename Ntk::node const& n, Container& node_to_value, Simulator const& sim )
 {
   std::vector<kitty::partial_truth_table> fanin_values( ntk.fanin_size( n ) );
   ntk.foreach_fanin( n, [&]( auto const& f, auto i ) {
@@ -620,19 +638,25 @@ void simulate_fanin_cone( Ntk const& ntk, typename Ntk::node const& n, unordered
     {
       simulate_fanin_cone( ntk, ntk.get_node( f ), node_to_value, sim );
     }
-    else assert( node_to_value[ntk.get_node( f )].num_bits() == sim.num_bits() );
+    else if ( node_to_value[ntk.get_node( f )].num_bits() != sim.num_bits() )
+    {
+      re_simulate_fanin_cone( ntk, ntk.get_node( f ), node_to_value, sim );
+    }
     fanin_values[i] = node_to_value[ntk.get_node( f )];
   } );
   node_to_value[n] = ntk.compute( n, fanin_values.begin(), fanin_values.end() );
 }
 
-template<class Ntk, class Simulator>
-void re_simulate_fanin_cone( Ntk const& ntk, typename Ntk::node const& n, unordered_node_map<kitty::partial_truth_table, Ntk>& node_to_value, Simulator const& sim )
+template<class Ntk, class Simulator, class Container>
+void re_simulate_fanin_cone( Ntk const& ntk, typename Ntk::node const& n, Container& node_to_value, Simulator const& sim )
 {
   std::vector<kitty::partial_truth_table> fanin_values( ntk.fanin_size( n ) );
   ntk.foreach_fanin( n, [&]( auto const& f, auto i ) {
-    assert( node_to_value.has( ntk.get_node( f ) ) );
-    if ( node_to_value[ntk.get_node( f )].num_bits() != sim.num_bits() )
+    if ( !node_to_value.has( ntk.get_node( f ) ) )
+    {
+      simulate_fanin_cone( ntk, ntk.get_node( f ), node_to_value, sim );
+    }
+    else if ( node_to_value[ntk.get_node( f )].num_bits() != sim.num_bits() )
     {
       re_simulate_fanin_cone( ntk, ntk.get_node( f ), node_to_value, sim );
     }
@@ -641,14 +665,14 @@ void re_simulate_fanin_cone( Ntk const& ntk, typename Ntk::node const& n, unorde
   ntk.compute( n, node_to_value[n], fanin_values.begin(), fanin_values.end() );
 }
 
-template<class Ntk, class Simulator>
-void update_const_pi( Ntk const& ntk, unordered_node_map<kitty::partial_truth_table, Ntk>& node_to_value, Simulator const& sim )
+template<class Ntk, class Simulator, class Container>
+void update_const_pi( Ntk const& ntk, Container& node_to_value, Simulator const& sim )
 {
   /* constants */
-  node_to_value[ntk.get_node( ntk.get_constant( false ) )] = sim.compute_constant( ntk.constant_value( ntk.get_node( ntk.get_constant( false ) ) ) );
+  node_to_value[ntk.get_constant( false )] = sim.compute_constant( ntk.constant_value( ntk.get_node( ntk.get_constant( false ) ) ) );
   if ( ntk.get_node( ntk.get_constant( false ) ) != ntk.get_node( ntk.get_constant( true ) ) )
   {
-    node_to_value[ntk.get_node( ntk.get_constant( true ) )] = sim.compute_constant( ntk.constant_value( ntk.get_node( ntk.get_constant( true ) ) ) );
+    node_to_value[ntk.get_constant( true )] = sim.compute_constant( ntk.constant_value( ntk.get_node( ntk.get_constant( true ) ) ) );
   }
 
   /* pis */
@@ -661,14 +685,14 @@ void update_const_pi( Ntk const& ntk, unordered_node_map<kitty::partial_truth_ta
 
 /*! \brief (Re-)simulate `n` and its transitive fanin cone.
  * 
- * Note that re-simulation (when `node_to_value.has( n ) == false`) is only done
+ * Note that re-simulation (when `node_to_value.has( n ) == true`) is only done
  * for the last block, no matter how many bits are used in this block.
  * Hence, it is advised to call `simulate_nodes` with `simulate_whole_tt = false`
  * whenever `sim.num_bits() % 64 == 0`.
  * 
  */
-template<class Ntk, class Simulator = partial_simulator>
-void simulate_node( Ntk const& ntk, typename Ntk::node const& n, unordered_node_map<kitty::partial_truth_table, Ntk>& node_to_value, Simulator const& sim )
+template<class Ntk, class Simulator = partial_simulator, class Container = unordered_node_map<kitty::partial_truth_table, Ntk>>
+void simulate_node( Ntk const& ntk, typename Ntk::node const& n, Container& node_to_value, Simulator const& sim )
 {
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
   static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
@@ -687,19 +711,7 @@ void simulate_node( Ntk const& ntk, typename Ntk::node const& n, unordered_node_
     
   if ( !node_to_value.has( n ) )
   {
-    std::vector<kitty::partial_truth_table> fanin_values( ntk.fanin_size( n ) );
-    ntk.foreach_fanin( n, [&]( auto const& f, auto i ) {
-      if ( !node_to_value.has( ntk.get_node( f ) ) )
-      {
-        simulate_node( ntk, ntk.get_node( f ), node_to_value, sim );
-      }
-      else if ( node_to_value[ntk.get_node( f )].num_bits() != sim.num_bits() )
-      {
-        detail::re_simulate_fanin_cone( ntk, ntk.get_node( f ), node_to_value, sim );
-      }
-      fanin_values[i] = node_to_value[ntk.get_node( f )];
-    } );
-    node_to_value[n] = ntk.compute( n, fanin_values.begin(), fanin_values.end() );
+    detail::simulate_fanin_cone( ntk, n, node_to_value, sim );
   }
   else if ( node_to_value[n].num_bits() != sim.num_bits() )
   {
@@ -716,8 +728,8 @@ void simulate_node( Ntk const& ntk, typename Ntk::node const& n, unordered_node_
  * In contrast, when this parameter is false, only the last block of `partial_truth_table` will be re-computed,
  * and it is assumed that `node_to_value.has( n )` is true for every node.
  */
-template<class Ntk, class Simulator = partial_simulator>
-void simulate_nodes( Ntk const& ntk, unordered_node_map<kitty::partial_truth_table, Ntk>& node_to_value, Simulator const& sim, bool simulate_whole_tt )
+template<class Ntk, class Simulator = partial_simulator, class Container = unordered_node_map<kitty::partial_truth_table, Ntk>>
+void simulate_nodes( Ntk const& ntk, Container& node_to_value, Simulator const& sim, bool simulate_whole_tt )
 {
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
   static_assert( has_get_constant_v<Ntk>, "Ntk does not implement the get_constant method" );
@@ -791,6 +803,54 @@ std::vector<SimulationType> simulate( Ntk const& ntk, Simulator const& sim = Sim
   const auto node_to_value = simulate_nodes<SimulationType, Ntk, Simulator>( ntk, sim );
 
   std::vector<SimulationType> po_values( ntk.num_pos() );
+  ntk.foreach_po( [&]( auto const& f, auto i ) {
+    if ( ntk.is_complemented( f ) )
+    {
+      po_values[i] = sim.compute_not( node_to_value[f] );
+    }
+    else
+    {
+      po_values[i] = node_to_value[f];
+    }
+  } );
+  return po_values;
+}
+
+/*! \brief Simulates a buffered network
+ *
+ * The implementation is only slightly different from `simulate` by
+ * replacing `foreach_gate` with `foreach_node` and checking `fanin_size`
+ * because buffers are not counted as gates but still need to be simulated.
+ */
+template<uint32_t NumPIs, class Ntk>
+std::vector<kitty::static_truth_table<NumPIs>> simulate_buffered( Ntk const& ntk )
+{
+  static_assert( has_is_buf_v<Ntk>, "Ntk is not a buffered network type" );
+  static_assert( has_compute_v<Ntk, kitty::static_truth_table<NumPIs>>, "Ntk does not implement the compute function for static_truth_table" );
+  assert( ntk.num_pis() == NumPIs );
+
+  default_simulator<kitty::static_truth_table<NumPIs>> sim;
+  node_map<kitty::static_truth_table<NumPIs>, Ntk> node_to_value( ntk );
+  node_to_value[ntk.get_node( ntk.get_constant( false ) )] = sim.compute_constant( ntk.constant_value( ntk.get_node( ntk.get_constant( false ) ) ) );
+  if ( ntk.get_node( ntk.get_constant( false ) ) != ntk.get_node( ntk.get_constant( true ) ) )
+  {
+    node_to_value[ntk.get_node( ntk.get_constant( true ) )] = sim.compute_constant( ntk.constant_value( ntk.get_node( ntk.get_constant( true ) ) ) );
+  }
+  ntk.foreach_pi( [&]( auto const& n, auto i ) {
+    node_to_value[n] = sim.compute_pi( i );
+  } );
+  ntk.foreach_node( [&]( auto const& n ) {
+    if ( ntk.fanin_size( n ) > 0 )
+    {
+      std::vector<kitty::static_truth_table<NumPIs>> fanin_values( ntk.fanin_size( n ) );
+      ntk.foreach_fanin( n, [&]( auto const& f, auto i ) {
+        fanin_values[i] = node_to_value[f];
+      } );
+      node_to_value[n] = ntk.compute( n, fanin_values.begin(), fanin_values.end() );
+    }
+  } );
+
+  std::vector<kitty::static_truth_table<NumPIs>> po_values( ntk.num_pos() );
   ntk.foreach_po( [&]( auto const& f, auto i ) {
     if ( ntk.is_complemented( f ) )
     {
