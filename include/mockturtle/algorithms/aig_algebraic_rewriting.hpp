@@ -17,10 +17,10 @@ namespace detail
 {
 
 template<class Ntk>
-class aig_algebraic_depth_rewriting_impl
+class aig_algebraic_rewriting_impl
 {
 public:
-  aig_algebraic_depth_rewriting_impl( Ntk& ntk )
+  aig_algebraic_rewriting_impl( Ntk& ntk )
     : ntk( ntk )
   {}
 
@@ -39,12 +39,12 @@ private:
 
 /* Entry point for users to call */
 template<class Ntk>
-void aig_algebraic_depth_rewriting( Ntk& ntk )
+void aig_algebraic_rewriting( Ntk& ntk )
 {
   static_assert( std::is_same_v<typename Ntk::base_type, aig_network>, "Ntk is not an AIG" );
 
   depth_view dntk{ntk};
-  detail::aig_algebraic_depth_rewriting_impl<Ntk> p( dntk );
+  detail::aig_algebraic_rewriting_impl<Ntk> p( dntk );
   p.run();
 }
 
