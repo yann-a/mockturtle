@@ -26,7 +26,9 @@ class aig_algebraic_rewriting_impl
 public:
   aig_algebraic_rewriting_impl( Ntk& ntk )
     : ntk( ntk )
-  {}
+  {
+    static_assert( has_level_v<Ntk>, "Ntk does not implement depth interface." );
+  }
 
   void run()
   {
@@ -84,7 +86,7 @@ void aig_algebraic_rewriting( Ntk& ntk )
   static_assert( std::is_same_v<typename Ntk::base_type, aig_network>, "Ntk is not an AIG" );
 
   depth_view dntk{ntk};
-  detail::aig_algebraic_rewriting_impl<Ntk> p( dntk );
+  detail::aig_algebraic_rewriting_impl p( dntk );
   p.run();
 }
 
