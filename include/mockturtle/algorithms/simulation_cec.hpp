@@ -51,9 +51,6 @@ struct simulation_cec_stats
 
   /*! \brief Number of simulation rounds. */
   uint32_t rounds{ 0 };
-
-  /*! \brief Simulation error. */
-  bool cec_error{ false };
 };
 
 namespace detail
@@ -98,10 +95,11 @@ private:
  * This function implements a simulation-based combinational equivalence checker.
  * The implementation creates a miter network and run several rounds of simulation
  * to verify the functional equivalence. For memory and speed reasons this approach
- * is limited up to 40 input networks.
+ * is limited up to 40 input networks. It returns an optional which is `nullopt`,
+ * if the network has more than 40 inputs.
  */
 template<class Ntk>
-bool simulation_cec( Ntk const& ntk1, Ntk const& ntk2, simulation_cec_stats* pst = nullptr )
+std::optional<bool> simulation_cec( Ntk const& ntk1, Ntk const& ntk2, simulation_cec_stats* pst = nullptr )
 {
   static_assert( is_network_type_v<Ntk>, "Ntk is not a network type" );
   static_assert( has_num_pis_v<Ntk>, "Ntk does not implement the num_pis method" );
@@ -114,27 +112,23 @@ bool simulation_cec( Ntk const& ntk1, Ntk const& ntk2, simulation_cec_stats* pst
 
   simulation_cec_stats st;
 
-  bool res = false;
+  bool result = false;
 
-  if ( ntk1.num_pis() <= 40 )
-  {
-    auto ntk_miter = miter<Ntk>( ntk1, ntk2 );
+  if ( ntk1.num_pis() > 40 )
+    return std::nullopt;
 
-    if ( ntk_miter.has_value() )
-    {
-      detail::simulation_cec_impl p( *ntk_miter, st );
-      res = p.run();
-    }
-  }
-  else
+  auto ntk_miter = miter<Ntk>( ntk1, ntk2 );
+
+  if ( ntk_miter.has_value() )
   {
-    st.cec_error = true;
+    detail::simulation_cec_impl p( *ntk_miter, st );
+    result = p.run();
   }
 
   if ( pst )
     *pst = st;
 
-  return res;
+  return result;
 }
 
 } // namespace mockturtle

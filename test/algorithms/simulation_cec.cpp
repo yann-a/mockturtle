@@ -35,10 +35,9 @@ TEST_CASE( "CEC simple AIG", "[cec]" )
   aig2.create_po( f22 );
 
   simulation_cec_stats st;
-  CHECK( simulation_cec( aig1, aig2, &st ) );
+  CHECK( *simulation_cec( aig1, aig2, &st ) );
   CHECK( st.split_var == 3 );
   CHECK( st.rounds == 1 );
-  CHECK( st.cec_error == false );
 }
 
 TEST_CASE( "CEC different #PIs", "[cec]" )
@@ -65,8 +64,7 @@ TEST_CASE( "CEC different #PIs", "[cec]" )
   xag2.create_po( f22 );
 
   simulation_cec_stats st;
-  CHECK( !simulation_cec( xag1, xag2, &st ) );
-  CHECK( st.cec_error == false );
+  CHECK( !*simulation_cec( xag1, xag2, &st ) );
 }
 
 TEST_CASE( "CEC different #POs", "[cec]" )
@@ -93,8 +91,7 @@ TEST_CASE( "CEC different #POs", "[cec]" )
   aig2.create_po( f22 );
 
   simulation_cec_stats st;
-  CHECK( !simulation_cec( aig1, aig2, &st ) );
-  CHECK( st.cec_error == false );
+  CHECK( !*simulation_cec( aig1, aig2, &st ) );
 }
 
 TEST_CASE( "CEC too many PIs", "[cec]" )
@@ -105,8 +102,7 @@ TEST_CASE( "CEC too many PIs", "[cec]" )
   CHECK( result == lorina::return_code::success );
 
   simulation_cec_stats st;
-  CHECK( !simulation_cec( aig1, aig1, &st ) );
-  CHECK( st.cec_error == true );
+  CHECK( simulation_cec( aig1, aig1, &st ) == std::nullopt );
 }
 
 TEST_CASE( "CEC different AIGs", "[cec]" )
@@ -126,8 +122,9 @@ TEST_CASE( "CEC different AIGs", "[cec]" )
   aig2.create_po( f2 );
 
   simulation_cec_stats st;
-  CHECK( !simulation_cec( aig1, aig2, &st ) );
-  CHECK( st.cec_error == false );
+  CHECK( !*simulation_cec( aig1, aig2, &st ) );
+  CHECK( st.split_var == 2 );
+  CHECK( st.rounds == 1 );
 }
 
 TEST_CASE( "CEC on optimized design 1", "[cec]" )
@@ -144,10 +141,9 @@ TEST_CASE( "CEC on optimized design 1", "[cec]" )
   mig_network mig2 = map( mig1, lib );
 
   simulation_cec_stats st;
-  CHECK( simulation_cec( mig1, mig2, &st ) );
+  CHECK( *simulation_cec( mig1, mig2, &st ) );
   CHECK( st.split_var == 18 );
   CHECK( st.rounds == 64 );
-  CHECK( st.cec_error == false );
 }
 
 TEST_CASE( "CEC on badly optimized design 1", "[cec]" )
@@ -170,10 +166,9 @@ TEST_CASE( "CEC on badly optimized design 1", "[cec]" )
   mig2.replace_in_outputs( mig2.index_to_node( 4331 ), g );
 
   simulation_cec_stats st;
-  CHECK( !simulation_cec( mig1, mig2, &st ) );
+  CHECK( !*simulation_cec( mig1, mig2, &st ) );
   CHECK( st.split_var == 18 );
   CHECK( st.rounds == 64 );
-  CHECK( st.cec_error == false );
 }
 
 TEST_CASE( "CEC on optimized design 2", "[cec]" )
@@ -190,8 +185,7 @@ TEST_CASE( "CEC on optimized design 2", "[cec]" )
   xag_network xag2 = map( xag1, lib );
 
   simulation_cec_stats st;
-  CHECK( simulation_cec( xag1, xag2, &st ) );
+  CHECK( *simulation_cec( xag1, xag2, &st ) );
   CHECK( st.split_var == 11 );
   CHECK( st.rounds == 1 );
-  CHECK( st.cec_error == false );
 }
