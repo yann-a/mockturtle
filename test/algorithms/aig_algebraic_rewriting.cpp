@@ -1,6 +1,6 @@
 #include <catch.hpp>
 
-#include <mockturtle/algorithms/aig_algebraic_rewriting_sol.hpp>
+#include <mockturtle/algorithms/aig_algebraic_rewriting.hpp>
 #include <mockturtle/networks/aig.hpp>
 #include <mockturtle/views/depth_view.hpp>
 #include <mockturtle/algorithms/simulation.hpp>
@@ -64,7 +64,7 @@ TEST_CASE( "Simple associativity (OR)", "[aig_algebraic_rewriting]" )
   CHECK( tts == simulate<kitty::static_truth_table<num_pis>>( aig ) );
 }
 
-TEST_CASE( "Simple distributivity", "[aig_algebraic_rewriting]" )
+TEST_CASE( "Simple distributivity (OR on top)", "[aig_algebraic_rewriting]" )
 {
   /* create the network */
   aig_network aig;
@@ -88,6 +88,64 @@ TEST_CASE( "Simple distributivity", "[aig_algebraic_rewriting]" )
   /* check the resulting depth */
   depth_view depth_aig{aig};
   CHECK( depth_aig.depth() == 3 );
+
+  /* check that the output functions remain the same */
+  CHECK( tts == simulate<kitty::static_truth_table<num_pis>>( aig ) );
+}
+
+TEST_CASE( "Simple distributivity (AND on top)", "[aig_algebraic_rewriting]" )
+{
+  /* create the network */
+  aig_network aig;
+  static const uint32_t num_pis{4};
+  std::vector<typename aig_network::signal> pis;
+  for ( uint32_t i = 0; i < num_pis; ++i )
+    pis.emplace_back( aig.create_pi() );
+
+  const auto g = aig.create_xor( pis[0], pis[1] );
+  const auto f1 = aig.create_or( g, pis[2] );
+  const auto f2 = aig.create_or( g, pis[3] );
+  const auto f3 = aig.create_and( f1, f2 );
+  aig.create_po( f3 );
+
+  /* simulate to get the output truth table(s) */
+  auto tts = simulate<kitty::static_truth_table<num_pis>>( aig );
+
+  /* call the algorithm */
+  aig_algebraic_rewriting( aig );
+
+  /* check the resulting depth */
+  depth_view depth_aig{aig};
+  CHECK( depth_aig.depth() == 3 );
+
+  /* check that the output functions remain the same */
+  CHECK( tts == simulate<kitty::static_truth_table<num_pis>>( aig ) );
+}
+
+TEST_CASE( "Three-layer distributivity", "[aig_algebraic_rewriting]" )
+{
+  /* create the network */
+  aig_network aig;
+  static const uint32_t num_pis{5};
+  std::vector<typename aig_network::signal> pis;
+  for ( uint32_t i = 0; i < num_pis; ++i )
+    pis.emplace_back( aig.create_pi() );
+
+  const auto g = aig.create_xor( pis[0], pis[1] );
+  const auto f1 = aig.create_and( g, pis[2] );
+  const auto f2 = aig.create_or( f1, pis[3] );
+  const auto f3 = aig.create_and( f2, pis[4] );
+  aig.create_po( f3 );
+
+  /* simulate to get the output truth table(s) */
+  auto tts = simulate<kitty::static_truth_table<num_pis>>( aig );
+
+  /* call the algorithm */
+  aig_algebraic_rewriting( aig );
+
+  /* check the resulting depth */
+  depth_view depth_aig{aig};
+  CHECK( depth_aig.depth() == 4 );
 
   /* check that the output functions remain the same */
   CHECK( tts == simulate<kitty::static_truth_table<num_pis>>( aig ) );
